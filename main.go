@@ -41,13 +41,17 @@ type instance struct {
 	id        string
 	config    *instanceConfig
 	startedAt time.Time
+	httpc     *http.Client
 }
 
 func newInstance() *instance {
+	c := http.DefaultClient
+	c.Timeout = 3 * time.Second
 	return &instance{
 		id:        uuid.New().String(),
 		config:    defaultConfig(),
 		startedAt: time.Now(),
+		httpc:     c,
 	}
 }
 
@@ -73,6 +77,29 @@ func main() {
 	}
 	srv := &http.Server{}
 
+	http.Handle("/proxy/get", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			instance.write(w, "Usage: POST {\"url\": \"url_to_get\"}")
+			return
+		}
+		req := map[string]interface{}{}
+		err := json.NewDecoder(r.Body).Decode(&req)
+		if err != nil || req["url"] == nil {
+			w.WriteHeader(http.StatusBadRequest)
+			instance.write(w, "failed to decode json")
+			return
+		}
+		resp, err := instance.httpc.Get(req["url"].(string))
+		if err != nil || req["url"] == nil {
+			w.WriteHeader(http.StatusBadRequest)
+			instance.write(w, err.Error())
+			return
+		}
+		defer resp.Body.Close()
+		w.WriteHeader(resp.StatusCode)
+		io.Copy(w, resp.Body)
+	}))
 	http.Handle("/health", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Content-Type", "application/json")
 		w.Header().Add("Access-Control-Allow-Origin", "*")
