@@ -20,11 +20,11 @@ var (
 )
 
 type responseMessage struct {
-	InstanceID string    `json:"instance_id"`
-	StartedAt  time.Time `json:"started_at"`
-	Timestamp  time.Time `json:"timestamp"`
-	Version    string    `json:"version"`
-	Message    string    `json:"message"`
+	InstanceID string      `json:"instance_id"`
+	StartedAt  time.Time   `json:"started_at"`
+	Timestamp  time.Time   `json:"timestamp"`
+	Version    string      `json:"version"`
+	Message    interface{} `json:"message"`
 }
 
 type instanceConfig struct {
@@ -55,7 +55,7 @@ func newInstance() *instance {
 	}
 }
 
-func (i *instance) write(w io.Writer, message string) {
+func (i *instance) write(w io.Writer, message interface{}) {
 	json.NewEncoder(w).Encode(responseMessage{
 		Message:    message,
 		InstanceID: i.id,
@@ -105,6 +105,20 @@ func main() {
 		w.Header().Add("Access-Control-Allow-Origin", "*")
 		w.WriteHeader(instance.config.slashCode)
 		instance.write(w, "hello.")
+	}))
+	http.Handle("/echo", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Content-Type", "application/json")
+		w.Header().Add("Access-Control-Allow-Origin", "*")
+		buf := map[string]interface{}{
+			"headers": r.Header,
+			"path":    r.URL.String(),
+			"method":  r.Method,
+		}
+		if err != nil {
+			instance.write(w, fmt.Sprintf("failed to encode http request: %v.", err))
+			return
+		}
+		instance.write(w, buf)
 	}))
 	http.Handle("/closeListener", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Content-Type", "application/json")
