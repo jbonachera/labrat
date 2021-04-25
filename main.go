@@ -8,7 +8,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -65,6 +67,15 @@ func (i *instance) write(w io.Writer, message interface{}) {
 	})
 }
 
+func mapEnv(env []string) map[string]string {
+	out := map[string]string{}
+	for _, kv := range env {
+		tokens := strings.SplitN(kv, "=", 2)
+		out[strings.ToLower(tokens[0])] = tokens[1]
+	}
+	return out
+}
+
 func main() {
 	instance := newInstance()
 	port := os.Getenv("PORT")
@@ -104,7 +115,27 @@ func main() {
 		w.Header().Add("Content-Type", "application/json")
 		w.Header().Add("Access-Control-Allow-Origin", "*")
 		w.WriteHeader(instance.config.slashCode)
-		instance.write(w, "hello.")
+		instance.write(w, "hello")
+	}))
+	http.Handle("/env", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Content-Type", "application/json")
+		w.Header().Add("Access-Control-Allow-Origin", "*")
+		instance.write(w, map[string]interface{}{
+			"environment": mapEnv(os.Environ()),
+		})
+	}))
+	http.Handle("/exec", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		req := map[string]interface{}{}
+		err := json.NewDecoder(r.Body).Decode(&req)
+		if err != nil || req["cmd"] == nil {
+			w.WriteHeader(http.StatusBadRequest)
+			instance.write(w, "failed to decode json")
+			return
+		}
+		process := exec.Command("sh", "-c", req["cmd"].(string))
+		process.Stderr = w
+		process.Stdout = w
+		process.Run()
 	}))
 	http.Handle("/echo", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Content-Type", "application/json")
