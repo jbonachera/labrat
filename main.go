@@ -77,6 +77,9 @@ func mapEnv(env []string) map[string]string {
 }
 
 func main() {
+	if os.Getenv("PANIC_AT_START") == "true" {
+		panic("panic requested")
+	}
 	instance := newInstance()
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -122,6 +125,9 @@ func main() {
 		w.Header().Add("Access-Control-Allow-Origin", "*")
 		instance.write(w, map[string]interface{}{
 			"environment": mapEnv(os.Environ()),
+			"headers":     r.Header,
+			"path":        r.URL.String(),
+			"method":      r.Method,
 		})
 	}))
 	http.Handle("/exec", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -136,20 +142,6 @@ func main() {
 		process.Stderr = w
 		process.Stdout = w
 		process.Run()
-	}))
-	http.Handle("/echo", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Add("Content-Type", "application/json")
-		w.Header().Add("Access-Control-Allow-Origin", "*")
-		buf := map[string]interface{}{
-			"headers": r.Header,
-			"path":    r.URL.String(),
-			"method":  r.Method,
-		}
-		if err != nil {
-			instance.write(w, fmt.Sprintf("failed to encode http request: %v.", err))
-			return
-		}
-		instance.write(w, buf)
 	}))
 	http.Handle("/closeListener", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Content-Type", "application/json")
